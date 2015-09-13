@@ -1,0 +1,83 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+
+
+namespace Evolve
+{
+	class Program
+	{
+		static void Main(string[] args)
+		{
+			Console.Write ("Type your post text:  ");
+
+			//create a link to include in the post
+			SocialDataItem linkDataItem = new SocialDataItem ();
+			linkDataItem.ItemType = SocialDataItemType.Link;
+			linkDataItem.Text = "link";
+
+			//define properties of the post
+			SocialPostCreationData postCreationData = new SocialPostCreationData ();
+			postCreationData.ContentText = Console.ReadLine () + " Plus a {0].";
+			postCreationData.ContentItems = new SocialDataItem[1] { linkDataItem };
+
+			//get the client context
+			ClientContext clientContext = new ClientContext (serverUrl);
+
+			//get the social feed manager instance
+			SocialFeedManager feedManager = new SocialFeedManager (clientContext);
+
+			//publish the post. This is a root post,so specify the null for the targetID parameter
+			feedManager.CreatePost (null, postCreationData);
+			clientContext.ExecuteQuery ();
+
+			//Set parameters for the feed content that you want to retrieve
+			SocialFeedOptions = new SocialFeedOptions ();
+
+			//Get the target owner's feed and then run the request on the server
+			ClientResult<SocialFeed> feed = feedManager.GetFeed (SocialFeedType.News, feedOptions);
+			clientContext.ExecuteQuery ();
+
+			//create a dictionary to store the ID property of each thread. store ID to select a thread to reply to
+			Dictionary<int, string> idDictionary = new Dictionary<int, string> ();
+
+			//Iterate through each thread of the feed
+			for (int i = 0; i < feed.Value.Threads.Length; i++) {
+				SocialThread thread = feed.Value.Threads [i];
+
+				//keep only the threads that can be replied to 
+				if (thread.Attributes.HasFlag (SocialThreadAttributes.CanReply)) {
+					idDictionary.Add (i, thread.Id);
+
+					//get properties from the root post and thread.
+					//if thread contains more than two replies, the server returns 
+					//a thread digest that contains only the two most recent replies
+					//to get all replies, call SocialFeedManager.GetFullThread
+					SocialPost rootPost = thread.RootPost;
+					SocialActor author = thread.Actors [rootPost.AuthorIndex];
+					Console.WriteLine (string.Format ("{0}. {1} said \"{2}\" ({3} replies)",
+						(i + 1), author.Name, rootPost.Text, thread.TotalReplyCount));
+
+				}
+			}
+			Console.WriteLine ("\nWhich user do you want to reply to?  ");
+
+			string threadToReplyTo = "";
+			int threadNumber = int.Parse (Console.Readline ()) - 1;
+			idDictionary.TryGetValue (threadNumber, out threadToReplyTo);
+
+			Console.Write ("Enter Reply:  ");
+
+			//define properties for reply 
+			postCreationData.ContextText = Console.ReadLine ();
+
+			//publish the reply and make the changes on the server 
+			ClientResult<SocialThread> result = feedManager.CreatePost (threadToReplyTo, postCreationData);
+			clientContext.ExecuteQuery ();
+
+			Console.WriteLine ("\nThe reply was published. The thread now has {0] replies.", result.Value.TotalReplyCount);
+			Console.ReadLine ();
+		}
+	}
+}
